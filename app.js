@@ -45,7 +45,7 @@ mongoose.connect(process.env.MONGODB_URI, {
   .catch(err => console.log('MongoDB connection error:', err));
 
 app.use(cors({
-  origin: 'http://localhost:3000',
+  origin: 'https://mentor-student-app.netlify.app/',
   methods: ['GET', 'POST'],
   credentials: true,
 }));
