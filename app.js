@@ -14,13 +14,15 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: '*', // Socket.io CORS setup
+    origin: '*',
     methods: ['GET', 'POST']
   }
 });
 
+// Use cookie-parser to parse cookies
 app.use(cookieParser());
 
+// Use session with MongoStore
 app.use(session({
   secret: 'your secret key',
   resave: false,
@@ -42,15 +44,15 @@ mongoose.connect(process.env.MONGODB_URI, {
 }).then(() => console.log('MongoDB connected'))
   .catch(err => console.log('MongoDB connection error:', err));
 
-// Update CORS configuration
 app.use(cors({
-  origin: 'https://mentor-student-app.netlify.app', localhost: 'http://localhost:3000',
+  origin: ['http://localhost:3000', 'https://mentor-student-app.netlify.app'],
   methods: ['GET', 'POST'],
   credentials: true,
 }));
 
 app.use(express.json());
 
+// Validate ObjectId middleware
 function validateObjectId(req, res, next) {
   if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
     return res.status(400).send('Invalid ID');
@@ -58,6 +60,7 @@ function validateObjectId(req, res, next) {
   next();
 }
 
+// Routes
 app.get('/', (req, res) => {
   res.send('Welcome to the Coding Mentorship App Backend!');
 });
@@ -82,6 +85,7 @@ app.get('/codeblocks/:id', validateObjectId, async (req, res) => {
   }
 });
 
+
 app.get('/codeblocks/:id/role', validateObjectId, (req, res) => {
   const { id } = req.params;
   const { role } = req.query;
@@ -105,6 +109,11 @@ app.get('/codeblocks/:id/role', validateObjectId, (req, res) => {
   });
 });
 
+
+
+
+
+// Socket.io setup
 io.on('connection', (socket) => {
   console.log('New client connected');
   socket.on('codeChange', (data) => {
@@ -117,5 +126,6 @@ io.on('connection', (socket) => {
   });
 });
 
+// Start the server
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
