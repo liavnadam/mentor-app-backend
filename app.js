@@ -44,7 +44,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 
 // Update CORS configuration
 app.use(cors({
-  origin: 'https://mentor-student-app.netlify.app', // Only allow this origin
+  origin: 'https://mentor-student-app.netlify.app', localhost: 'http://localhost:3000',
   methods: ['GET', 'POST'],
   credentials: true,
 }));
