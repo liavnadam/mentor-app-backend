@@ -14,7 +14,7 @@ const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: '*',
+    origin: '*', // Socket.io CORS setup
     methods: ['GET', 'POST']
   }
 });
@@ -44,7 +44,7 @@ mongoose.connect(process.env.MONGODB_URI, {
 
 // Update CORS configuration
 app.use(cors({
-  origin: 'https://mentor-student-app.netlify.app', // Allow your frontend URL
+  origin: 'https://mentor-student-app.netlify.app', // Only allow this origin
   methods: ['GET', 'POST'],
   credentials: true,
 }));
