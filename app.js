@@ -1,107 +1,129 @@
-// app.js
-require('dotenv').config();
 const express = require('express');
+const cookieParser = require('cookie-parser');
+const session = require('express-session');
+const MongoStore = require('connect-mongo');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const http = require('http');
 const socketIo = require('socket.io');
 const CodeBlock = require('./models/CodeBlock');
-const session = require('express-session');
-const MongoStore = require('connect-mongo');
+
+require('dotenv').config();
 
 const app = express();
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: '*',
+    methods: ['GET', 'POST']
   }
 });
 
+// Use cookie-parser to parse cookies
+app.use(cookieParser());
+
+// Use session with MongoStore
 app.use(session({
-    secret: 'your secret key',
-    resave: false,
-    saveUninitialized: false,
-    store: MongoStore.create({
-      mongoUrl: process.env.MONGODB_URI,
-      collectionName: 'sessions'
-    }),
-    cookie: {
-      secure: process.env.NODE_ENV === 'production',  // Ensure cookies are only transmitted over HTTPS
-      maxAge: 1000 * 60 * 60 * 24 // 24 hours in milliseconds
-    }
-  }));
+  secret: 'your secret key',
+  resave: false,
+  saveUninitialized: false,
+  store: MongoStore.create({
+    mongoUrl: process.env.MONGODB_URI,
+    collectionName: 'sessions',
+    stringify: false,
+  }),
+  cookie: {
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 1000 * 60 * 60 * 24 // 24 hours
+  }
+}));
 
-// Connect to MongoDB using environment variables
 mongoose.connect(process.env.MONGODB_URI, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-  }).then(() => console.log('MongoDB connected'))
-    .catch(err => console.log(err));
-  
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+}).then(() => console.log('MongoDB connected'))
+  .catch(err => console.log('MongoDB connection error:', err));
 
-app.use(cors());
-let roleAssignments = {};
+app.use(cors({
+  origin: 'http://localhost:3000',
+  methods: ['GET', 'POST'],
+  credentials: true,
+}));
 
 app.use(express.json());
 
-// Define routes
+// Validate ObjectId middleware
+function validateObjectId(req, res, next) {
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    return res.status(400).send('Invalid ID');
+  }
+  next();
+}
+
+// Routes
 app.get('/', (req, res) => {
   res.send('Welcome to the Coding Mentorship App Backend!');
 });
 
 app.get('/codeblocks', async (req, res) => {
-    try {
-      const codeblocks = await CodeBlock.find({});
-      res.json(codeblocks);
-    } catch (error) {
-      console.error("Error fetching code blocks:", error);
-      res.status(500).send("Internal Server Error");
+  try {
+    const codeblocks = await CodeBlock.find({});
+    res.json(codeblocks);
+  } catch (error) {
+    console.error("Error fetching code blocks:", error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+
+app.get('/codeblocks/:id', validateObjectId, async (req, res) => {
+  try {
+    const codeblock = await CodeBlock.findById(req.params.id);
+    if (!codeblock) return res.status(404).send("Code block not found");
+    res.json(codeblock);
+  } catch (error) {
+    res.status(500).send(error);
+  }
+});
+
+app.get('/codeblocks/:id/role', validateObjectId, (req, res) => {
+  const { id } = req.params;
+  const { role } = req.query; // Accept role as a query parameter
+
+  if (!req.session.roles) {
+    req.session.roles = {};
+  }
+
+  if (role) {
+    req.session.roles[id] = role;
+  } else if (!req.session.roles[id]) {
+    req.session.roles[id] = 'mentor'; // Default to mentor if no role is set
+  }
+
+  req.session.save(err => {
+    if (err) {
+      console.error('Session save error:', err);
+      return res.status(500).send('Error saving session');
     }
+    res.json({ role: req.session.roles[id] });
   });
-  
-  
-  app.get('/codeblocks/:id', async (req, res) => {
-    try {
-      const codeblock = await CodeBlock.findById(req.params.id);
-      if (!codeblock) return res.status(404).send("Code block not found");
-      res.json(codeblock);
-    } catch (error) {
-      res.status(500).send(error);
-    }
+});
+
+
+
+
+// Socket.io setup
+io.on('connection', (socket) => {
+  console.log('New client connected');
+  socket.on('codeChange', (data) => {
+    console.log(`Code change received: ${data.code}`);
+    socket.broadcast.emit('codeUpdate', data);
   });
 
-  app.get('/codeblocks/:id/role', (req, res) => {
-    console.log(`Session ID: ${req.sessionID}`);
-    console.log(`Session store: ${JSON.stringify(req.session)}`);
-  
-    const { id } = req.params;
-    if (!req.session.roles) req.session.roles = {};
-    if (!req.session.roles[id]) {
-        req.session.roles[id] = 'mentor';
-        console.log(`First user, set as mentor: ${id}`);
-        res.json({ role: 'mentor' });
-    } else {
-        console.log(`Subsequent user, set as student: ${id}`);
-        res.json({ role: 'student' });
-    }
+  socket.on('disconnect', () => {
+    console.log('Client disconnected');
   });
-  
+});
 
-  
-  // Setup socket.io
-  io.on('connection', (socket) => {
-    console.log('New client connected');
-  
-    socket.on('codeChange', (data) => {
-      socket.broadcast.emit('codeUpdate', data);
-    });
-  
-    socket.on('disconnect', () => {
-      console.log('Client disconnected');
-    });
-  });
-  
-  // Start the server
-  const PORT = process.env.PORT || 5000;
-  server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+// Start the server
+const PORT = process.env.PORT || 5000;
+server.listen(PORT, () => console.log(`Server running on port ${PORT}`));
